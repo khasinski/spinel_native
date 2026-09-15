@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "etc"
 require "open3"
 require "shellwords"
 
@@ -56,6 +57,51 @@ module Spinel
             st = File.stat(spinel_bin)
             Digest::SHA256.hexdigest([st.size, st.mtime.to_i, RUBY_VERSION, RUBY_PLATFORM, RbConfig::CONFIG["CC"]].join("|"))
           end
+        end
+
+        def cc
+          Shellwords.split(RbConfig::CONFIG["CC"] || "cc")
+        end
+
+        # The runtime archive Spinel ships is built for executables, not
+        # position-independent code, so a shared object cannot link it on
+        # Linux. Compile the runtime sources once per Spinel build into a
+        # -fPIC archive in the cache; the sources sit beside the headers.
+        def runtime_archive
+          @runtime_archive ||= begin
+            dir = File.join(cache_dir, "runtime_#{fingerprint[0, 12]}")
+            archive = File.join(dir, "libspinel_rt_pic.a")
+            build_runtime_archive(dir, archive) unless File.exist?(archive)
+            archive
+          end
+        end
+
+        def build_runtime_archive(dir, archive)
+          t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          FileUtils.mkdir_p(dir)
+          sources = Dir[File.join(runtime_dir, "*.c")] + Dir[File.join(runtime_dir, "regexp", "*.c")]
+          raise Error, "no runtime sources in #{runtime_dir}" if sources.empty?
+          jobs = Etc.respond_to?(:nprocessors) ? Etc.nprocessors : 4
+          queue = Queue.new
+          sources.each { |src| queue << src }
+          failures = Queue.new
+          objects = sources.map { |src| File.join(dir, File.basename(src, ".c") + ".o") }
+          Array.new(jobs) do
+            Thread.new do
+              while (src = queue.pop(true) rescue nil)
+                obj = File.join(dir, File.basename(src, ".c") + ".o")
+                cmd = [*cc, "-c", "-fPIC", "-O2", "-w", "-ffunction-sections", "-fdata-sections",
+                       "-I#{runtime_dir}", "-I#{File.join(runtime_dir, 'regexp')}", src, "-o", obj]
+                out, status = Open3.capture2e(*cmd)
+                failures << "#{cmd.join(' ')}\n#{out}" unless status.success?
+              end
+            end
+          end.each(&:join)
+          raise CompileError, "compiling the Spinel runtime failed:\n#{failures.pop}" unless failures.empty?
+          out, status = Open3.capture2e("ar", "rcs", archive, *objects)
+          raise CompileError, "ar failed:\n#{out}" unless status.success?
+          FileUtils.rm_f(objects)
+          Native.log("runtime compiled with -fPIC in #{(Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0).round(2)}s (#{archive})")
         end
       end
 
@@ -115,13 +161,12 @@ module Spinel
       end
 
       def run_cc
-        cc = Shellwords.split(RbConfig::CONFIG["CC"] || "cc")
         shared = RUBY_PLATFORM.include?("darwin") ? %w[-bundle -Wl,-undefined,dynamic_lookup] : %w[-shared]
-        cmd = [*cc, *shared, "-fPIC", "-O2", "-w",
+        cmd = [*self.class.cc, *shared, "-fPIC", "-O2", "-w",
                "-I#{RbConfig::CONFIG['rubyhdrdir']}", "-I#{RbConfig::CONFIG['rubyarchhdrdir']}",
                "-I#{self.class.runtime_dir}", "-I#{@dir}",
                File.join(@dir, "#{@feature}.c"), File.join(@dir, "#{@feature}_ext.c"),
-               File.join(self.class.runtime_dir, "libspinel_rt.a"), "-lm", "-o", bundle]
+               self.class.runtime_archive, "-lm", "-o", bundle]
         sh(cmd, "cc")
       end
 

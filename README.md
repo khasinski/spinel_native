@@ -72,10 +72,12 @@ stays in place and a warning says why.
 3. `spinel kernel.rb -c --ext cruby --ext-init ... --ext-entry Mod.a,Mod.b`
    emits the kernel C, a header contract, and a CRuby shim that converts
    `VALUE`s, releases the GVL, and re-raises kernel exceptions.
-4. The C compiler from `RbConfig` links those with `libspinel_rt.a` into a
-   bundle, keyed in the cache by the kernel source, the entries, the Spinel
-   binary and the Ruby ABI. `require` loads it; the method is redefined to
-   forward to the extension.
+4. The C compiler from `RbConfig` links those with the Spinel runtime into a
+   shared object, keyed in the cache by the kernel source, the entries, the
+   Spinel binary and the Ruby ABI. The runtime itself is compiled once per
+   Spinel build with `-fPIC` (a couple of seconds), since the archive Spinel
+   ships is meant for executables. `require` loads the object; the method is
+   redefined to forward to the extension.
 
 ## Install
 
