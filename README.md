@@ -77,12 +77,22 @@ stays in place and a warning says why.
    binary and the Ruby ABI. `require` loads it; the method is redefined to
    forward to the extension.
 
+## Install
+
+Spinel is not on RubyGems; build it from source once and point the gem at it:
+
+```sh
+git clone https://github.com/matz/spinel && cd spinel && make deps && make
+export SPINEL=$PWD/bin/spinel
+gem install spinel_native   # or: gem "spinel_native" in the Gemfile
+```
+
 ## Running the example
 
 ```sh
-export SPINEL=/path/to/spinel/bin/spinel
+git clone https://github.com/khasinski/spinel_native && cd spinel_native
 ruby -I lib examples/demo.rb
-ruby -I lib -I test test/test_native.rb
+bundle exec rake test
 ```
 
 On an M-series Mac with CRuby master the demo prints roughly:

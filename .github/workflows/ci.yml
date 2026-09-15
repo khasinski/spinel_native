@@ -1,0 +1,25 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        ruby: ["4.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - name: Build Spinel
+        run: |
+          git clone --depth 1 https://github.com/matz/spinel.git ../spinel
+          make -C ../spinel deps
+          make -C ../spinel -j4
+      - name: Test
+        env:
+          SPINEL: ${{ github.workspace }}/../spinel/bin/spinel
+        run: bundle exec rake test
