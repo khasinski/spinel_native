@@ -76,8 +76,11 @@ stays in place and a warning says why.
    shared object, keyed in the cache by the kernel source, the entries, the
    Spinel binary and the Ruby ABI. The runtime itself is compiled once per
    Spinel build with `-fPIC` (a couple of seconds), since the archive Spinel
-   ships is meant for executables. `require` loads the object; the method is
-   redefined to forward to the extension.
+   ships is meant for executables. On Linux the object exports only its
+   `Init_*` symbol and binds the rest internally, because CRuby loads
+   extensions `RTLD_GLOBAL` and two kernels would otherwise share one
+   `sp_raise_cls`. `require` loads the object; the method is redefined to
+   forward to the extension.
 
 ## Install
 

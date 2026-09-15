@@ -108,10 +108,16 @@ module Spinel
       def install(entry, &body)
         @installing = true
         target = entry.kind == :singleton ? @owner.singleton_class : @owner
-        target.send(:define_method, entry.name) { |*args| body.call(args, self) }
-        @owner.singleton_class.send(:define_method, entry.name) { |*args| body.call(args, self) } if entry.module_function
+        redefine(target, entry.name) { |*args| body.call(args, self) }
+        redefine(@owner.singleton_class, entry.name) { |*args| body.call(args, self) } if entry.module_function
       ensure
         @installing = false
+      end
+
+      # define_method over an existing definition warns under -w; drop it first.
+      def redefine(target, name, &impl)
+        target.send(:remove_method, name) if target.method_defined?(name, false) || target.private_method_defined?(name, false)
+        target.send(:define_method, name, &impl)
       end
     end
   end

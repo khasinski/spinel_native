@@ -160,9 +160,22 @@ module Spinel
         sh(cmd, "spinel")
       end
 
+      # Every kernel carries its own copy of the runtime and exports the same
+      # global symbols. CRuby dlopens extensions RTLD_GLOBAL, and an ELF
+      # shared object binds its calls to the first definition in the
+      # process, so a second kernel would raise through the first kernel's
+      # exception stack and die as "unhandled". Export only Init_* and bind
+      # everything else inside the object. (Mach-O two-level namespaces do
+      # this by default.)
+      def shared_flags
+        return %w[-bundle -Wl,-undefined,dynamic_lookup] if RUBY_PLATFORM.include?("darwin")
+        script = File.join(@dir, "exports.map")
+        File.write(script, "{ global: Init_*; local: *; };\n")
+        ["-shared", "-Wl,-Bsymbolic", "-Wl,--version-script=#{script}"]
+      end
+
       def run_cc
-        shared = RUBY_PLATFORM.include?("darwin") ? %w[-bundle -Wl,-undefined,dynamic_lookup] : %w[-shared]
-        cmd = [*self.class.cc, *shared, "-fPIC", "-O2", "-w",
+        cmd = [*self.class.cc, *shared_flags, "-fPIC", "-O2", "-w",
                "-I#{RbConfig::CONFIG['rubyhdrdir']}", "-I#{RbConfig::CONFIG['rubyarchhdrdir']}",
                "-I#{self.class.runtime_dir}", "-I#{@dir}",
                File.join(@dir, "#{@feature}.c"), File.join(@dir, "#{@feature}_ext.c"),
