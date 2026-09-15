@@ -1,5 +1,8 @@
 # spinel_native
 
+[![Gem Version](https://badge.fury.io/rb/spinel_native.svg)](https://rubygems.org/gems/spinel_native)
+[![CI](https://github.com/khasinski/spinel_native/actions/workflows/ci.yml/badge.svg)](https://github.com/khasinski/spinel_native/actions/workflows/ci.yml)
+
 Compile a single Ruby method to native code with the
 [Spinel](https://github.com/matz/spinel) AOT compiler, from inside a running
 CRuby program. Mark the hot method, keep everything else on CRuby.
@@ -84,13 +87,30 @@ stays in place and a warning says why.
 
 ## Install
 
-Spinel is not on RubyGems; build it from source once and point the gem at it:
+The gem is on RubyGems:
+
+```sh
+gem install spinel_native
+```
+
+or in a Gemfile:
+
+```ruby
+gem "spinel_native"
+```
+
+The gem needs the Spinel compiler at run time, and Spinel is not on RubyGems.
+Build it from source once and point the gem at the binary, either through
+`SPINEL` or by putting `spinel` on `PATH`:
 
 ```sh
 git clone https://github.com/matz/spinel && cd spinel && make deps && make
 export SPINEL=$PWD/bin/spinel
-gem install spinel_native   # or: gem "spinel_native" in the Gemfile
 ```
+
+The runtime headers and sources are found next to the binary. If Spinel
+was installed elsewhere, `SPINEL_HDR_DIR` names the directory with
+`spinel_rt.h`.
 
 ## Running the example
 

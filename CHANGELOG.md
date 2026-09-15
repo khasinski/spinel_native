@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.1.0
+## 0.1.0 (2026-09-15)
+
+First release on RubyGems.
 
 - `native def` marks a method; its first call samples the argument types,
   compiles the kernel with `spinel --ext cruby`, and rebinds the method.
