@@ -23,6 +23,21 @@
 # re-bound to the compiled entry. If anything fails the pure-Ruby definition
 # stays in place, so the program is never worse off than without the gem.
 #
+# A module can also keep state inside the kernel between calls:
+#
+#   module Index
+#     extend Spinel::Native
+#     native_state { @docs = [] }
+#     native "(Array[String]) -> Integer"
+#     def load(docs) = (@docs = docs).length
+#     native "(Integer) -> String"
+#     def doc(i) = @docs[i]
+#   end
+#
+# Such a module is compiled as a whole when its body ends (all its native
+# methods must declare signatures), and the Ruby definitions run against the
+# module's own ivars, initialised by the same block.
+#
 # SPINEL_NATIVE=off     never compile, run the Ruby definitions
 # SPINEL_NATIVE=verify  run both and raise Spinel::Native::Mismatch on divergence
 # SPINEL_NATIVE=strict  a compile failure raises instead of falling back
@@ -92,6 +107,17 @@ module Spinel
       end
     end
 
+    # native_state { @items = []; @sum = 0 }
+    #
+    # Module-level state that lives inside the compiled kernel across calls
+    # (and, for the Ruby fallback, in the module's own ivars). A stateful
+    # module is compiled as a whole when its body ends, so every native
+    # method in it needs a declared signature.
+    def native_state(&block)
+      raise ArgumentError, "native_state needs a block" unless block
+      @__spinel_native.state(block)
+    end
+
     # native def foo(a, b) ... end          types sampled from the first call
     # native "(Array[Float], Integer) -> Float"; def foo(a, b) ... end
     #                                         types declared, compiled on first call
@@ -104,6 +130,20 @@ module Spinel
       else raise ArgumentError, "native: unexpected #{arg.inspect}"
       end
       arg
+    end
+
+    # Emit extra top-level source into the compiled kernel, ahead of the marked
+    # methods: constants, `Struct.new` state aggregates, and plain helper defs
+    # the native methods call. Only `native` methods are pulled from their
+    # source files; everything else a kernel needs must be declared here.
+    #
+    #   native_prelude <<~RUBY
+    #     WIDTH = 320
+    #     St = Struct.new(:buf, :n)
+    #   RUBY
+    def native_prelude(source)
+      @__spinel_native.add_prelude(source)
+      source
     end
   end
 end

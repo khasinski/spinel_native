@@ -144,6 +144,74 @@ before the first request rather than in the middle of one:
 Spinel::Native.compile!(Stats)
 ```
 
+### Keep state between calls
+
+`native_state` gives the module state that lives inside the compiled kernel,
+so a large input can be copied in once and queried many times:
+
+```ruby
+module Index
+  extend Spinel::Native
+
+  native_state do
+    @docs = []
+  end
+
+  native "(Array[String]) -> Integer"
+  def load(docs)
+    @docs = docs
+    docs.length
+  end
+
+  native "(String) -> Array[Integer]"
+  def find(word)
+    hits = []
+    i = 0
+    while i < @docs.length
+      hits << i if @docs[i].include?(word)
+      i += 1
+    end
+    hits
+  end
+end
+
+Index.load(corpus)      # copied across once
+Index.find("spinel")    # no copy, just the answer
+```
+
+A stateful module is one kernel with one state, so it is compiled as a
+whole the moment its body ends; there is nothing to call first. Every native
+method in it therefore needs a declared signature, and a missing one is
+reported when the module closes. The block also runs on the module itself,
+so the Ruby definitions (used by `off`, `verify`, and the fallback) start
+from the same state. State is per process, not per object: a stateful
+module is a singleton, and a forked worker gets its own copy.
+
+### Extra kernel source
+
+Only `native` methods are pulled out of the source file. Constants, `Struct`
+definitions, and helpers the kernel needs but that are not entries go in a
+`native_prelude`:
+
+```ruby
+module Raster
+  extend Spinel::Native
+
+  native_prelude <<~RUBY
+    WIDTH = 320
+    Point = Struct.new(:x, :y)
+
+    def self.clamp(v, lo, hi)
+      v < lo ? lo : (v > hi ? hi : v)
+    end
+  RUBY
+
+  native def pixel(x, y)
+    clamp(y, 0, 239) * WIDTH + clamp(x, 0, WIDTH - 1)
+  end
+end
+```
+
 ### Modes
 
 The Ruby definition is always kept. Which path runs is a process-wide
@@ -175,12 +243,13 @@ SPINEL_NATIVE_VERBOSE=1             # print the commands and timings
 - Parameters and the return value cross the boundary **by copy**. Supported
   types: `Integer` (64-bit), `Float`, `String`, `bool`, and `Array` of those.
   Mutating a parameter is refused at compile time; return the result instead.
-- The body must not touch `self`, instance variables, or anything outside the
-  set of `native` methods in its module.
+- The body must not touch `self` or anything outside the module's `native`
+  methods, its `native_prelude`, and its `native_state` ivars.
 - A `raise` inside the kernel arrives in Ruby as the same exception class and
   message. Integer overflow raises `RangeError` where CRuby would promote to a
   Bignum, and a Bignum argument is a `RangeError` at the boundary.
-- The kernel runs without the GVL, one call at a time per module.
+- The kernel runs without the GVL, one call at a time per module, so
+  `native_state` needs no locking of its own.
 
 ## How it works
 

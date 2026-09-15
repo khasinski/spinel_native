@@ -71,3 +71,59 @@ module Fixtures
     end
   end
 end
+
+module Fixtures
+  module Counter
+    extend Spinel::Native
+
+    native_state do
+      @total = 0
+      @seen = []
+    end
+
+    native "(Integer) -> Integer"
+    def add(n)
+      @total += n
+      @seen << n
+      @total
+    end
+
+    native "() -> Integer"
+    def total
+      @total
+    end
+
+    native "() -> Array[Integer]"
+    def seen
+      @seen
+    end
+  end
+
+  module Untyped
+    extend Spinel::Native
+
+    native_state { @n = 0 }
+
+    native def bump
+      @n += 1
+    end
+  end
+end
+
+module Fixtures
+  module WithPrelude
+    extend Spinel::Native
+
+    native_prelude <<~RUBY
+      SCALE = 10
+
+      def self.helper(n)
+        n * SCALE
+      end
+    RUBY
+
+    native def scaled(n)
+      helper(n) + 1
+    end
+  end
+end

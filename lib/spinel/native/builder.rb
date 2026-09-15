@@ -107,10 +107,10 @@ module Spinel
 
       # +body+ is the module body (the `def self.` methods), +entries+ maps the
       # exported names to their parameter types.
-      def initialize(body, entries)
-        @body = body
+      def initialize(body, entries, state: nil)
+        @body = state && !state.empty? ? "#{state}\n\n#{body}" : body
         @entries = entries
-        digest = Digest::SHA256.hexdigest([self.class.fingerprint, body, entries.inspect].join("\0"))[0, 12]
+        digest = Digest::SHA256.hexdigest([self.class.fingerprint, @body, entries.inspect].join("\0"))[0, 12]
         @module_name = "SpinelKernel#{digest}"
         @feature = "spinel_kernel_#{digest}"
         @dir = File.join(self.class.cache_dir, @feature)

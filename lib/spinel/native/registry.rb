@@ -9,13 +9,46 @@ module Spinel
       Entry = Struct.new(:name, :kind, :pure, :source, :types, :compiled, :module_function, keyword_init: true)
 
       attr_accessor :pending_signature
-      attr_reader :entries
+      attr_reader :entries, :prelude
 
       def initialize(owner)
         @owner = owner
         @entries = {}
+        @prelude = []
         @last_def = nil
         @installing = false
+        @state = nil
+        @disabled = false
+      end
+
+      def stateful?
+        !@state.nil?
+      end
+
+      # `native_state { ... }`: run the block on the module so the Ruby
+      # definitions start from the same state, keep its source for the
+      # kernel, and arm a compile of the whole module for when its body ends.
+      def state(block)
+        raise Error, "#{@owner}: native_state declared twice" if @state
+        @state = Source.of_state_block(block)
+        @owner.instance_exec(&block)
+        owner = @owner
+        tp = TracePoint.new(:end) do |ev|
+          next unless ev.self.equal?(owner)
+          tp.disable
+          compile_stateful
+        end
+        @end_hook = tp
+        tp.enable
+      end
+
+      # Extra top-level source (constants, Structs, plain helper defs) emitted
+      # into the kernel module ahead of the marked methods. The kernel is
+      # otherwise exactly the set of `native` methods, so anything they
+      # reference by name -- a SCREEN_WIDTH constant, a state Struct, a helper
+      # that is not itself an exported entry -- has to be declared here.
+      def add_prelude(source)
+        @prelude << source.to_s
       end
 
       # Called from the method_added hooks.
@@ -45,6 +78,7 @@ module Spinel
       end
 
       def compile_known!
+        return compile_stateful ? @entries.values : [] if stateful?
         known = @entries.values.select { |e| e.types && !e.compiled }
         compile(known) unless known.empty?
         known
@@ -60,7 +94,13 @@ module Spinel
       # First call of a not-yet-compiled entry: settle its types, compile the
       # kernel, then either forward or (verify mode) keep comparing.
       def dispatch(entry, args, this)
-        return pure_call(entry, args, this) if Native.mode == :off
+        return pure_call(entry, args, this) if Native.mode == :off || @disabled
+        if stateful?
+          # A module without a closing `end` event (Module.new) compiles here instead.
+          compile_stateful unless entry.compiled
+          return pure_call(entry, args, this) unless entry.compiled
+          return native_call(entry, args, this)
+        end
         unless entry.compiled
           entry.types ||= args.map { |a| Types.of_value(a) }
           compile(@entries.values.select { |e| e.types && !e.compiled })
@@ -73,6 +113,28 @@ module Spinel
         entry.types = nil
         install(entry) { |a, t| pure_call(entry, a, t) }
         pure_call(entry, args, this)
+      end
+
+      # A stateful module is one kernel with one state, so it is compiled in
+      # full, once: every native method must carry a declared signature. Runs
+      # when the module body ends, or at the first call if that never fires.
+      # Returns true when the module is now native.
+      def compile_stateful
+        @end_hook&.disable
+        return false if @disabled || Native.mode == :off
+        return true if @entries.values.all?(&:compiled) && !@entries.empty?
+        untyped = @entries.values.reject(&:types).map(&:name)
+        unless untyped.empty?
+          raise Native::TypeError, "#{@owner} keeps state, so every native method needs a signature; missing: #{untyped.join(', ')}"
+        end
+        compile(@entries.values)
+        true
+      rescue Native::TypeError, CompileError => e
+        raise if Native.mode == :strict
+        warn "[spinel-native] #{@owner}: staying on Ruby (#{e.message.lines.first.strip})"
+        @disabled = true
+        @entries.each_value { |entry| install(entry) { |a, t| pure_call(entry, a, t) } }
+        false
       end
 
       def native_call(entry, args, this)
@@ -89,8 +151,8 @@ module Spinel
       # Every marked method goes into the kernel (they may call each other);
       # the ones with known types are exported.
       def compile(exports)
-        body = @entries.values.map(&:source).join("\n\n")
-        builder = Builder.new(body, exports.to_h { |e| [e.name, e.types] })
+        body = (@prelude + @entries.values.map(&:source)).join("\n\n")
+        builder = Builder.new(body, exports.to_h { |e| [e.name, e.types] }, state: @state)
         result = builder.build
         mod = Object.const_get(result.module_name)
         exports.each do |e|

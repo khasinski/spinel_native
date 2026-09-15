@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 (2026-09-16)
+
+- `native_state { ... }`: module state kept inside the compiled kernel
+  across calls. A stateful module is compiled as a whole when its body ends
+  and needs a signature on every native method; the block also initialises
+  the Ruby definitions' ivars.
+- `native_prelude`: constants, Structs and helper defs emitted into the
+  kernel ahead of the native methods.
+
 ## 0.1.0 (2026-09-15)
 
 First release on RubyGems.

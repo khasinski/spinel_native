@@ -107,3 +107,47 @@ class CompileTest < Minitest::Test
     assert_nil Spinel::Native.registry_of(Fixtures::Off).entries[:plus_one].compiled
   end
 end
+
+class StateTest < Minitest::Test
+  def test_stateful_module_compiles_when_its_body_ends
+    entries = Spinel::Native.registry_of(Fixtures::Counter).entries
+    assert entries.values.all?(&:compiled), "Counter should be compiled without any call"
+  end
+
+  def test_state_persists_across_calls
+    Spinel::Native.mode = :strict
+    before = Fixtures::Counter.total
+    Fixtures::Counter.add(5)
+    Fixtures::Counter.add(7)
+    assert_equal before + 12, Fixtures::Counter.total
+    assert_equal [5, 7], Fixtures::Counter.seen.last(2)
+  end
+
+  def test_ruby_side_state_is_initialised_by_the_same_block
+    reg = Spinel::Native.registry_of(Fixtures::Counter)
+    total = reg.entries[:total]
+    assert_kind_of Integer, reg.pure_call(total, [], Fixtures::Counter)
+  end
+
+  def test_verify_mode_keeps_both_states_in_step
+    Spinel::Native.mode = :verify
+    Fixtures::Counter.add(1)
+    assert_equal Fixtures::Counter.total, Fixtures::Counter.total
+  end
+
+  def test_untyped_stateful_module_stays_on_ruby
+    Spinel::Native.mode = :on
+    # the warning was printed when the module body ended; the Ruby definitions still work
+    assert_equal 1, Fixtures::Untyped.bump
+    assert_equal 2, Fixtures::Untyped.bump
+    assert_nil Spinel::Native.registry_of(Fixtures::Untyped).entries[:bump].compiled
+  end
+end
+
+class PreludeTest < Minitest::Test
+  def test_prelude_source_is_part_of_the_kernel
+    Spinel::Native.mode = :strict
+    assert_equal 31, Fixtures::WithPrelude.scaled(3)
+    refute_nil Spinel::Native.registry_of(Fixtures::WithPrelude).entries[:scaled].compiled
+  end
+end
