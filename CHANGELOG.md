@@ -6,7 +6,9 @@
   Ruby (exported across the extension boundary). Every other native method
   stays internal to the kernel, so its parameters and return value need not be
   boundary types and it needs no signature -- letting a real stateful renderer
-  keep poly-typed helpers behind a small typed surface.
+  keep poly-typed helpers behind a small typed surface. A non-entry method
+  called from Ruby runs its Ruby definition on the module's Ruby-side ivars,
+  not the kernel state; treat it as private to the kernel.
 
 ## 0.2.0 (2026-09-16)
 

@@ -242,6 +242,12 @@ module Renderer
 end
 ```
 
+Internal methods are still defined on the Ruby module, but calling one from
+Ruby runs its **Ruby** definition, against the module's Ruby-side ivars, not
+the kernel's state. `Renderer.draw_walls(...)` would draw into the Ruby
+`@fb`, which the compiled `render` never sees. Treat internal methods as
+private to the kernel; make a method an entry if Ruby needs its result.
+
 ### Modes
 
 The Ruby definition is always kept. Which path runs is a process-wide
@@ -280,6 +286,9 @@ SPINEL_NATIVE_VERBOSE=1             # print the commands and timings
   Bignum, and a Bignum argument is a `RangeError` at the boundary.
 - The kernel runs without the GVL, one call at a time per module, so
   `native_state` needs no locking of its own.
+- In a stateful module with `native_entries`, only the entries reach the
+  kernel's state. A non-entry method called from Ruby runs as Ruby, on the
+  module's own ivars.
 
 ## How it works
 
