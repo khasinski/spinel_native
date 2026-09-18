@@ -212,6 +212,36 @@ module Raster
 end
 ```
 
+### Choose the entry methods
+
+A stateful module is compiled as one kernel, and by default every native method
+is an entry that Ruby can call -- so every one needs a boundary-crossable
+signature. `native_entries` names the few methods actually called from Ruby; the
+rest stay internal to the kernel, reachable only from other native methods.
+Internal methods need no signature and their parameters and return value need
+not be boundary types (they may be poly and get boxed) -- which is what lets a
+real, mutually-recursive kernel expose a small typed surface:
+
+```ruby
+module Renderer
+  extend Spinel::Native
+
+  native_state { @fb = Array.new(76800, 0) }
+  native_entries :render          # the only method CRuby calls
+
+  native "(Integer, Integer, Float) -> Array[Integer]"
+  def render(px, py, angle)
+    draw_walls(px, py, angle)     # internal; no signature required
+    @fb
+  end
+
+  native def draw_walls(px, py, angle) # stays inside the kernel
+    # ...
+    0
+  end
+end
+```
+
 ### Modes
 
 The Ruby definition is always kept. Which path runs is a process-wide

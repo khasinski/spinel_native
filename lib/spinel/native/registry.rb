@@ -19,10 +19,21 @@ module Spinel
         @installing = false
         @state = nil
         @disabled = false
+        @entry_names = nil
+        @stateful_compiled = false
       end
 
       def stateful?
         !@state.nil?
+      end
+
+      # Restrict which methods of a stateful kernel are exported across the
+      # extension boundary (called from Ruby). The rest stay internal to the
+      # kernel -- reachable only from other native methods -- so their parameter
+      # and return types need not be boundary-crossable (they may be poly and
+      # get boxed). Without this every native method is an entry.
+      def set_entries(names)
+        @entry_names = names.map(&:to_sym)
       end
 
       # `native_state { ... }`: run the block on the module so the Ruby
@@ -122,12 +133,20 @@ module Spinel
       def compile_stateful
         @end_hook&.disable
         return false if @disabled || Native.mode == :off
-        return true if @entries.values.all?(&:compiled) && !@entries.empty?
-        untyped = @entries.values.reject(&:types).map(&:name)
+        return true if @stateful_compiled
+        exports = @entry_names ? @entries.values.select { |e| @entry_names.include?(e.name) } : @entries.values
+        raise Native::TypeError, "#{@owner}: native_entries names no known method" if exports.empty?
+        # Only exported (boundary-crossing) methods need signatures; internal
+        # helpers are inferred from the call graph, like a non-stateful kernel.
+        untyped = exports.reject(&:types).map(&:name)
         unless untyped.empty?
-          raise Native::TypeError, "#{@owner} keeps state, so every native method needs a signature; missing: #{untyped.join(', ')}"
+          raise Native::TypeError, "#{@owner} keeps state, so every native entry needs a signature; missing: #{untyped.join(', ')}"
         end
-        compile(@entries.values)
+        compile(exports)
+        # Internal helpers are compiled into the kernel but not callable from
+        # Ruby; if one is invoked directly, fall back to its Ruby definition.
+        (@entries.values - exports).each { |e| install(e) { |a, t| pure_call(e, a, t) } }
+        @stateful_compiled = true
         true
       rescue Native::TypeError, CompileError => e
         raise if Native.mode == :strict

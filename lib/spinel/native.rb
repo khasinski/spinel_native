@@ -145,5 +145,17 @@ module Spinel
       @__spinel_native.add_prelude(source)
       source
     end
+
+    # native_entries :render, :load_map
+    #
+    # In a stateful kernel, name the methods that are called from Ruby (exported
+    # across the extension boundary). Every other native method stays internal
+    # to the kernel -- reachable only from native code -- so its parameter and
+    # return types need not be boundary types. Without this, every native method
+    # is an entry and must have boundary-crossable signatures.
+    def native_entries(*names)
+      @__spinel_native.set_entries(names)
+      names
+    end
   end
 end

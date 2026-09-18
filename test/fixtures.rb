@@ -127,3 +127,26 @@ module Fixtures
     end
   end
 end
+
+module Fixtures
+  module Entried
+    extend Spinel::Native
+
+    native_state { @acc = 0 }
+
+    # Only `run` is called from Ruby; `step` is internal to the kernel and needs
+    # no signature (native_entries exempts non-entry methods from the stateful
+    # every-method-needs-a-signature rule).
+    native_entries :run
+
+    native "(Integer) -> Integer"
+    def run(n)
+      @acc = step(n) + step(n)
+      @acc
+    end
+
+    native def step(x)
+      x * 3 + 1
+    end
+  end
+end

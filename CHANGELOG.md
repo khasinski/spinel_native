@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 (2026-09-18)
+
+- `native_entries :a, :b`: in a stateful kernel, name the methods called from
+  Ruby (exported across the extension boundary). Every other native method
+  stays internal to the kernel, so its parameters and return value need not be
+  boundary types and it needs no signature -- letting a real stateful renderer
+  keep poly-typed helpers behind a small typed surface.
+
 ## 0.2.0 (2026-09-16)
 
 - `native_state { ... }`: module state kept inside the compiled kernel

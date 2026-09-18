@@ -151,3 +151,14 @@ class PreludeTest < Minitest::Test
     refute_nil Spinel::Native.registry_of(Fixtures::WithPrelude).entries[:scaled].compiled
   end
 end
+
+class NativeEntriesTest < Minitest::Test
+  def test_only_named_methods_are_entries_and_internals_need_no_signature
+    Spinel::Native.mode = :strict
+    # run(2) = step(2)*2 = (2*3+1)*2 = 14; the module compiled although the
+    # internal helper `step` carries no signature.
+    assert_equal 14, Fixtures::Entried.run(2)
+    reg = Spinel::Native.registry_of(Fixtures::Entried)
+    refute_nil reg.entries[:run].compiled, "run is an exported entry"
+  end
+end
