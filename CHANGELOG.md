@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1 (2026-09-20)
+
+- Run the kernel with the GVL held. The CRuby shim Spinel emits locks its
+  mutex under the GVL and then releases the GVL for the call, which deadlocks
+  on the second concurrent call from another Ruby thread (Puma under load).
+  Until the shim is fixed upstream, spinel_native rewrites the call site so
+  the kernel runs under the GVL; kernels no longer overlap other Ruby threads.
+- The build cache key includes the spinel_native version.
+
 ## 0.3.0 (2026-09-18)
 
 - `native_entries :a, :b`: in a stateful kernel, name the methods called from

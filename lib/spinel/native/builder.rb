@@ -55,7 +55,7 @@ module Spinel
         def fingerprint
           @fingerprint ||= begin
             st = File.stat(spinel_bin)
-            Digest::SHA256.hexdigest([st.size, st.mtime.to_i, RUBY_VERSION, RUBY_PLATFORM, RbConfig::CONFIG["CC"]].join("|"))
+            Digest::SHA256.hexdigest([st.size, st.mtime.to_i, RUBY_VERSION, RUBY_PLATFORM, RbConfig::CONFIG["CC"], VERSION].join("|"))
           end
         end
 
@@ -158,6 +158,23 @@ module Spinel
                "--ext", "cruby", "--ext-init", "spx_init_#{@feature}", "--ext-entry", entry_list,
                "-o", File.join(@dir, "#{@feature}.c")]
         sh(cmd, "spinel")
+        keep_gvl(File.join(@dir, "#{@feature}_ext.c"))
+      end
+
+      # The shim Spinel emits takes its mutex while holding the GVL and then
+      # releases the GVL for the kernel call. A second Ruby thread entering
+      # the shim blocks on the mutex with the GVL held, the first cannot take
+      # the GVL back to unlock, and the process deadlocks on its second
+      # concurrent call (reproduced under Puma with wrk). Until the shim
+      # orders the two the other way round, run the kernel with the GVL held:
+      # the mutex is then never contended and the conversions, which touch
+      # the single-threaded Spinel heap, are serialized too. The cost is that
+      # kernels do not overlap with other Ruby threads.
+      def keep_gvl(shim)
+        src = File.read(shim)
+        patched = src.gsub(/rb_thread_call_without_gvl\((spx_run_\d+), &c__, RUBY_UBF_IO, NULL\)/, '\1(&c__)')
+        raise CompileError, "unexpected shim shape in #{shim}: no rb_thread_call_without_gvl call sites" if patched == src
+        File.write(shim, patched)
       end
 
       # Every kernel carries its own copy of the runtime and exports the same

@@ -284,8 +284,8 @@ SPINEL_NATIVE_VERBOSE=1             # print the commands and timings
 - A `raise` inside the kernel arrives in Ruby as the same exception class and
   message. Integer overflow raises `RangeError` where CRuby would promote to a
   Bignum, and a Bignum argument is a `RangeError` at the boundary.
-- The kernel runs without the GVL, one call at a time per module, so
-  `native_state` needs no locking of its own.
+- Kernels run one call at a time per module, with the GVL held (see the
+  0.3.1 changelog for why), so `native_state` needs no locking of its own.
 - In a stateful module with `native_entries`, only the entries reach the
   kernel's state. A non-entry method called from Ruby runs as Ruby, on the
   module's own ivars.

@@ -162,3 +162,15 @@ class NativeEntriesTest < Minitest::Test
     refute_nil reg.entries[:run].compiled, "run is an exported entry"
   end
 end
+
+class ConcurrencyTest < Minitest::Test
+  # Two Ruby threads calling a kernel at once must not deadlock (the shim's
+  # mutex-then-release-GVL order did, before keep_gvl).
+  def test_concurrent_calls_from_ruby_threads
+    Spinel::Native.mode = :strict
+    Fixtures::Calc.twice(1)
+    results = 8.times.map { |i| Thread.new { 200.times.map { |j| Fixtures::Calc.twice(i * 1000 + j) } } }.map { |t| t.join(20) or flunk "deadlocked" }.map(&:value)
+    assert_equal 8, results.size
+    assert_equal (0...200).map { |j| (7 * 1000 + j) * 2 }, results.last
+  end
+end
